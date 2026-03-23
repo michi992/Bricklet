@@ -1,8 +1,10 @@
 from tinkerforge.ip_connection import IPConnection
 from tinkerforge.bricklet_ptc_v2 import BrickletPTCV2
-from ki import PORT
-from ki import HOST
+
+HOST="172.20.10.242"
+PORT=4223
 UID = "Pdw"
+
 
 if __name__ == "__main__":
     ipcon = IPConnection() # Create IP connection

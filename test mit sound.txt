@@ -1,0 +1,37 @@
+
+import time
+from tinkerforge.ip_connection import IPConnection
+from tinkerforge.bricklet_piezo_speaker_v2 import BrickletPiezoSpeakerV2
+
+
+
+UID="R7M"
+
+Ton_test =  [(494, 125),   # B4
+ (523, 125), ]  #
+
+FUER_ELISE = [
+    # Hauptthema
+    (659, 125),   # E5
+
+]
+
+def play_note(ps, freq, duration_ms):
+    if freq == 0:
+        time.sleep(duration_ms / 1000.0)
+    else:
+        ps.set_beep(freq, 0, duration_ms)
+        time.sleep(duration_ms / 1000.0 + 0.02)
+
+if __name__ == "__main__":
+    ipcon = IPConnection()
+    ps = BrickletPiezoSpeakerV2(UID, ipcon)
+
+    ipcon.connect(HOST, PORT)
+
+    print("Spiele Fuer Elise - Beethoven...")
+    for freq, duration in FUER_ELISE:
+        play_note(ps, freq, duration)
+
+    print("Fertig.")
+    input("Druecke Enter zum Beenden\n")
