@@ -1,4 +1,5 @@
 import time
+import threading
 from tinkerforge.ip_connection import IPConnection
 from tinkerforge.bricklet_segment_display_4x7_v2 import BrickletSegmentDisplay4x7V2
 from tinkerforge.bricklet_lcd_128x64 import BrickletLCD128x64
@@ -6,6 +7,7 @@ from tinkerforge.bricklet_e_paper_296x128 import BrickletEPaper296x128
 import config
 
 _segment_mode = "time"
+_segment_running = False
 
 def toggle_segment_mode():
     global _segment_mode
@@ -13,38 +15,45 @@ def toggle_segment_mode():
     return _segment_mode
 
 def show_on_segment():
+    """Aktualisiert die Segmentanzeige einmal."""
     ipcon = IPConnection()
     try:
         ipcon.connect(config.HOST, config.PORT)
+        ipcon.set_timeout(3000)
         sd = BrickletSegmentDisplay4x7V2(config.UIDS["SEGMENT"], ipcon)
         now = time.localtime()
-        if _segment_mode == "time":
-            h1 = now.tm_hour // 10
-            h2 = now.tm_hour % 10
-            m1 = now.tm_min // 10
-            m2 = now.tm_min % 10
-        else:
-            h1 = now.tm_mday // 10
-            h2 = now.tm_mday % 10
-            m1 = now.tm_mon // 10
-            m2 = now.tm_mon % 10
 
-        # Segmente: 0=oben, 1=oben-rechts, 2=unten-rechts, 3=unten,
-        #           4=unten-links, 5=oben-links, 6=mitte
+        if _segment_mode == "time":
+            d1 = now.tm_hour // 10
+            d2 = now.tm_hour % 10
+            d3 = now.tm_min  // 10
+            d4 = now.tm_min  % 10
+        else:
+            d1 = now.tm_mday // 10
+            d2 = now.tm_mday % 10
+            d3 = now.tm_mon  // 10
+            d4 = now.tm_mon  % 10
+
+        # Jede Ziffer: 8 Booleans (Segmente a,b,c,d,e,f,g, Dezimalpunkt)
         DIGITS = {
-            0: [True, True, True, True, True, True, False],
-            1: [False, True, True, False, False, False, False],
-            2: [True, True, False, True, True, False, True],
-            3: [True, True, True, True, False, False, True],
-            4: [False, True, True, False, False, True, True],
-            5: [True, False, True, True, False, True, True],
-            6: [True, False, True, True, True, True, True],
-            7: [True, True, True, False, False, False, False],
-            8: [True, True, True, True, True, True, True],
-            9: [True, True, True, True, False, True, True],
+            0: [True,  True,  True,  True,  True,  True,  False, False],
+            1: [False, True,  True,  False, False, False, False, False],
+            2: [True,  True,  False, True,  True,  False, True,  False],
+            3: [True,  True,  True,  True,  False, False, True,  False],
+            4: [False, True,  True,  False, False, True,  True,  False],
+            5: [True,  False, True,  True,  False, True,  True,  False],
+            6: [True,  False, True,  True,  True,  True,  True,  False],
+            7: [True,  True,  True,  False, False, False, False, False],
+            8: [True,  True,  True,  True,  True,  True,  True,  False],
+            9: [True,  True,  True,  True,  False, True,  True,  False],
         }
 
-        sd.set_segments(DIGITS[h1], DIGITS[h2], DIGITS[m1], DIGITS[m2], True)
+        # Doppelpunkt (2 LEDs), Tick (einzelner Punkt)
+        colon = [True, True] if (now.tm_sec % 2 == 0) else [False, False]
+        tick = False
+
+        sd.set_segments(DIGITS[d1], DIGITS[d2], DIGITS[d3], DIGITS[d4], colon, tick)
+
     except Exception as e:
         print(f"[Segment] Fehler: {e}")
     finally:
@@ -53,15 +62,34 @@ def show_on_segment():
         except:
             pass
 
+def start_segment_loop():
+    global _segment_running
+    if _segment_running:
+        return
+    _segment_running = True
+
+    def _loop():
+        while _segment_running:
+            show_on_segment()
+            time.sleep(1)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+def stop_segment_loop():
+    global _segment_running
+    _segment_running = False
+
+# --- LCD & E-Paper Funktionen (unverändert) ---
 def update_lcd(metrics, extra_line=None):
     ipcon = IPConnection()
     try:
         ipcon.connect(config.HOST, config.PORT)
+        ipcon.set_timeout(3000)
         lcd = BrickletLCD128x64(config.UIDS["LCD"], ipcon)
         lcd.clear_display()
-        lcd.write_line(0, 0, f"Temp:  {metrics['temp']} C")
-        lcd.write_line(1, 0, f"Licht: {metrics['lux']} lx")
-        lcd.write_line(2, 0, f"Feuch: {metrics['hum']} %")
+        lcd.write_line(0, 0, f"Temp:  {metrics['temp']:.1f} C")
+        lcd.write_line(1, 0, f"Licht: {metrics['lux']:.1f} lx")
+        lcd.write_line(2, 0, f"Feuch: {metrics['hum']:.1f} %")
         if extra_line:
             lcd.write_line(3, 0, extra_line[:22])
     except Exception as e:
@@ -76,6 +104,7 @@ def epaper_show_scan_prompt():
     ipcon = IPConnection()
     try:
         ipcon.connect(config.HOST, config.PORT)
+        ipcon.set_timeout(3000)
         ep = BrickletEPaper296x128(config.UIDS["EPAPER"], ipcon)
         ep.fill_display(ep.COLOR_WHITE)
         ep.draw_text(10, 50, ep.FONT_24X32, ep.COLOR_BLACK, ep.COLOR_WHITE, "NFC Karte scannen")
@@ -92,6 +121,7 @@ def epaper_show_status(title, line2=""):
     ipcon = IPConnection()
     try:
         ipcon.connect(config.HOST, config.PORT)
+        ipcon.set_timeout(3000)
         ep = BrickletEPaper296x128(config.UIDS["EPAPER"], ipcon)
         ep.fill_display(ep.COLOR_WHITE)
         ep.draw_text(10, 20, ep.FONT_24X32, ep.COLOR_BLACK, ep.COLOR_WHITE, title[:12])
@@ -107,20 +137,14 @@ def epaper_show_status(title, line2=""):
             pass
 
 def lcd_show_game_screen(bird_y, score, pipes=None):
-    """Flappy Bird auf dem LCD 128x64 (8 Zeilen à 6px, 22 Zeichen breit)"""
     ipcon = IPConnection()
     try:
         ipcon.connect(config.HOST, config.PORT)
+        ipcon.set_timeout(3000)
         lcd = BrickletLCD128x64(config.UIDS["LCD"], ipcon)
         lcd.clear_display()
-
-        # Zeile 0: Score
         lcd.write_line(0, 0, f"FLAPPY  Score:{score:03d}")
-
-        # Zeilen 1-7 = Spielfeld (7 Zeilen)
         bird_row = max(1, min(7, 1 + int(bird_y / (64 / 7))))
-
-        # Pipes zeichnen
         pipe_cols = []
         if pipes:
             for (px, gap_y) in pipes:
@@ -128,13 +152,10 @@ def lcd_show_game_screen(bird_y, score, pipes=None):
                 gap_row_top = max(1, int(gap_y / (64 / 7)))
                 gap_row_bot = min(7, gap_row_top + 2)
                 pipe_cols.append((col, gap_row_top, gap_row_bot))
-
         for row in range(1, 8):
             line = [" "] * 22
-            # Vogel
             if row == bird_row:
                 line[2] = ">"
-            # Pipes
             for (col, gt, gb) in pipe_cols:
                 if 0 <= col < 22:
                     if row < gt or row > gb:
