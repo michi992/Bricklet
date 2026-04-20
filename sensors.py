@@ -14,7 +14,7 @@ def get_all_metrics():
         return {
             "temp": ptc.get_temperature() / 100.0,
             "lux": al.get_illuminance() / 100.0,
-            "hum": hum.get_humidity() / 10.0
+            "hum": hum.get_humidity() / 100.0
         }
     except Exception as e:
         print(f"Sensorfehler: {e}")
