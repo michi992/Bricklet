@@ -33,6 +33,43 @@ class AdminDashboard:
         # Segment-Loop beim Start automatisch starten
         display_manager.start_segment_loop()
 
+        # NFC-Monitor starten: reagiert auf Karten automatisch
+        self.security.set_card_callback(self._on_nfc_card)
+        self.security.start_monitor()
+
+    def _on_nfc_card(self, role, card_id):
+        """Wird aufgerufen sobald eine bekannte Karte erkannt wird."""
+        self._log(f"NFC: {role}-Karte erkannt ({card_id})")
+
+        if role == "Admin":
+            # Admin-Karte → Flappy Bird starten
+            self._log("Admin erkannt → Flappy Bird!")
+            self.root.after(0, self._easter_egg)
+
+        elif role == "Techniker":
+            # Techniker-Karte → Stats auf LCD anzeigen
+            self._log("Techniker erkannt → Stats auf LCD.")
+            threading.Thread(target=self._show_stats_on_lcd, daemon=True).start()
+
+    def _show_stats_on_lcd(self):
+        """Zeigt aktuelle Sensordaten auf dem LCD."""
+        try:
+            from tinkerforge.ip_connection import IPConnection
+            from tinkerforge.bricklet_lcd_128x64 import BrickletLCD128x64
+            data = sensors.get_all_metrics()
+            ipcon = IPConnection()
+            ipcon.connect(config.HOST, config.PORT)
+            lcd = BrickletLCD128x64(config.UIDS["LCD"], ipcon)
+            lcd.clear_display()
+            lcd.write_line(0, 0, "=== STATS ===   ")
+            lcd.write_line(1, 0, f"Temp:  {data['temp']:.1f} C      ")
+            lcd.write_line(2, 0, f"Licht: {data['lux']:.1f} lx     ")
+            lcd.write_line(3, 0, f"Feuch: {data['hum']:.1f} %      ")
+            lcd.write_line(5, 0, time.strftime("Zeit: %H:%M:%S  "))
+            ipcon.disconnect()
+        except Exception as e:
+            self._log(f"LCD Stats Fehler: {e}")
+
     def _build_ui(self):
         bg, fg, accent, s_bg = "#1e1e2e", "#cdd6f4", "#89b4fa", "#313244"
 
@@ -71,7 +108,6 @@ class AdminDashboard:
                                        selectbackground="#45475a")
         self.card_listbox.pack(fill="x", padx=15, pady=5)
 
-        # Rollen-Buttons
         role_f = tk.Frame(nf, bg=s_bg)
         role_f.pack(fill="x", padx=10, pady=5)
         tk.Button(role_f, text="Admin",     bg="#f9e2af", relief="flat",
@@ -81,7 +117,6 @@ class AdminDashboard:
         tk.Button(role_f, text="Sperren",   bg="#6c7086", fg="white", relief="flat",
                   command=lambda: self._set_role("Keine")).pack(side="left", expand=True, padx=2)
 
-        # Scan & Löschen
         mgmt_f = tk.Frame(nf, bg=s_bg)
         mgmt_f.pack(fill="x", padx=10, pady=10)
         tk.Button(mgmt_f, text="➕ Neue Karte einlesen (0 Rechte)", bg="#a6e3a1",
