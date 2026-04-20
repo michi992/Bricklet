@@ -1,5 +1,5 @@
 @echo off
 title Serverraum-Ueberwachung (Konsole)
 call venv\Scripts\activate
-python main.py
+py main.py
 pause

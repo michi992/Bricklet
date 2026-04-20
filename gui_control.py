@@ -6,6 +6,8 @@ import tkinter as tk
 from tkinter import messagebox, font
 import threading
 import time
+from tinkerforge.ip_connection import IPConnection
+from tinkerforge.bricklet_lcd_128x64 import BrickletLCD128x64
 
 import config
 import sensors
@@ -24,8 +26,14 @@ class AdminDashboard:
 
         self.segment_mode = "time"
         self.game = flappy_logic.FlappyBird()
+        self._game_thread = None
+        self._game_stop = threading.Event()
+        self._flappy_mode = False
         self.security = nfc_auth.SecurityManager()
         self._build_ui()
+        self.root.bind("<space>", self._flap_key)
+        self.root.bind("<Escape>", self._stop_game_key)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._auto_update()
 
     def _build_ui(self):
@@ -89,10 +97,16 @@ class AdminDashboard:
 
     def _log(self, msg):
         ts = time.strftime("%H:%M:%S")
-        self.log_box.configure(state="normal")
-        self.log_box.insert("end", f"[{ts}] {msg}\n")
-        self.log_box.see("end")
-        self.log_box.configure(state="disabled")
+        def _append():
+            self.log_box.configure(state="normal")
+            self.log_box.insert("end", f"[{ts}] {msg}\n")
+            self.log_box.see("end")
+            self.log_box.configure(state="disabled")
+
+        if threading.current_thread() is threading.main_thread():
+            _append()
+        else:
+            self.root.after(0, _append)
 
     def _refresh(self):
         def _worker():
@@ -102,7 +116,9 @@ class AdminDashboard:
                 self.var_lux.set( f"Licht:    {data['lux']:.1f} lx")
                 self.var_hum.set( f"Feucht.:  {data['hum']:.1f} %")
                 self.var_time.set(f"Zeit:     {time.strftime('%H:%M:%S')}")
-                display_manager.update_lcd(data)
+                # Do not overwrite the LCD while Flappy Bird is active.
+                if not self._flappy_mode and not self.game.active:
+                    display_manager.update_lcd(data)
                 # Alarm-Logik
                 if data["temp"] >= config.TEMP_CRIT:
                     self.lbl_status.config(text="● KRITISCH", fg="#f38ba8")
@@ -149,11 +165,62 @@ class AdminDashboard:
         threading.Thread(target=_worker, daemon=True).start()
 
     def _easter_egg(self):
-        self._log("🐦 Easter Egg aktiviert – Flappy Bird!")
-        self.game.start()
-        messagebox.showinfo("Easter Egg",
+        if self._game_thread and self._game_thread.is_alive():
+            self._log("Flappy Bird läuft bereits.")
+            return
+
+        self._flappy_mode = True
+        self._game_stop.clear()
+        self._game_thread = threading.Thread(target=self._run_flappy_on_lcd, daemon=True)
+        self._game_thread.start()
+        messagebox.showinfo(
+            "Easter Egg",
             "Flappy Bird läuft auf dem LCD!\n"
-            "Dual-Links = Flap | Dual-Rechts = Beenden")
+            "Leertaste = Flap | ESC = Beenden",
+        )
+
+    def _run_flappy_on_lcd(self):
+        ipcon = IPConnection()
+        try:
+            self._log("Flappy: Verbinde mit LCD...")
+            ipcon.connect(config.HOST, config.PORT)
+            lcd = BrickletLCD128x64(config.UIDS["LCD"], ipcon)
+            lcd.clear_display()
+            lcd.write_line(0, 0, "Flappy Initialisiere")
+            self.game.set_lcd(lcd)
+            self.game.start()
+            self._log("🐦 Flappy Bird gestartet.")
+
+            while self.game.active and not self._game_stop.is_set():
+                self.game.tick()
+                time.sleep(0.2)
+
+            self.game.stop()
+            self._flappy_mode = False
+            self._log("Flappy Bird beendet.")
+            self.root.after(0, self._refresh)
+        except Exception as e:
+            self._flappy_mode = False
+            self._log(f"Flappy Bird Fehler: {e}")
+        finally:
+            try:
+                ipcon.disconnect()
+            except Exception:
+                pass
+
+    def _flap_key(self, _event=None):
+        if self.game.active:
+            self.game.flap()
+
+    def _stop_game_key(self, _event=None):
+        if self.game.active:
+            self._game_stop.set()
+        self._flappy_mode = False
+
+    def _on_close(self):
+        self._game_stop.set()
+        self._flappy_mode = False
+        self.root.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()

@@ -5,7 +5,7 @@ echo  Bricklet Project - Installer
 echo ==========================================
 echo.
 echo [1/3] Erstelle virtuelle Umgebung...
-python -m venv venv
+py -m venv venv
 echo.
 echo [2/3] Aktiviere Umgebung...
 call venv\Scripts\activate
