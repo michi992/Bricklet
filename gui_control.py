@@ -17,7 +17,7 @@ import flappy_logic
 class AdminDashboard:
     def __init__(self, root):
         self.root = root
-        self.root.title("Tinkerforge Control Center")
+        self.root.title("Tinkerforge Serverraum-Überwachung")
         self.root.geometry("550x950")
         self.root.configure(bg="#1e1e2e")
         self.root.resizable(False, False)
@@ -30,7 +30,7 @@ class AdminDashboard:
         self._build_ui()
         self._auto_update()
 
-        # Segment-Loop automatisch starten
+        # Segment-Loop beim Start automatisch starten
         display_manager.start_segment_loop()
 
     def _build_ui(self):
@@ -176,8 +176,12 @@ class AdminDashboard:
             self.var_time.set(f"Zeit:     {time.strftime('%H:%M:%S')}")
             if data["temp"] >= config.TEMP_CRIT:
                 self.lbl_status.config(text="● KRITISCH", fg="#f38ba8")
+                self._log(f"ALARM: Temperatur kritisch! {data['temp']:.1f}°C")
+                threading.Thread(target=alarm_system.play_imperial_march, daemon=True).start()
             elif data["temp"] >= config.TEMP_WARN:
                 self.lbl_status.config(text="● WARNUNG",  fg="#f9e2af")
+                self._log(f"WARNUNG: Temperatur {data['temp']:.1f}°C")
+                threading.Thread(target=alarm_system.play_alarm, daemon=True).start()
             else:
                 self.lbl_status.config(text="● OK",       fg="#a6e3a1")
         except Exception as e:
