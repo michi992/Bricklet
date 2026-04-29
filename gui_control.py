@@ -1,20 +1,24 @@
 """
 Serverraum-Überwachung – Admin Dashboard (Final)
+
 Start: python gui_control.py
 """
+
 import tkinter as tk
 from tkinter import messagebox
 import threading
 import time
-
 import config
 import sensors
 import display_manager
 import alarm_system
 import nfc_auth
 import flappy_logic
+import rgb_button  # NEU: RGB-Button Listener
+
 
 class AdminDashboard:
+
     def __init__(self, root):
         self.root = root
         self.root.title("Tinkerforge Serverraum-Überwachung")
@@ -33,6 +37,9 @@ class AdminDashboard:
         # Segment-Loop beim Start automatisch starten
         display_manager.start_segment_loop()
 
+        # NEU: RGB-Button Listener starten (schaltet Zeit/Datum auf Segment-Display)
+        rgb_button.start_rgb_listener()
+
         # NFC-Monitor starten: reagiert auf Karten automatisch
         self.security.set_card_callback(self._on_nfc_card)
         self.security.start_monitor()
@@ -40,14 +47,10 @@ class AdminDashboard:
     def _on_nfc_card(self, role, card_id):
         """Wird aufgerufen sobald eine bekannte Karte erkannt wird."""
         self._log(f"NFC: {role}-Karte erkannt ({card_id})")
-
         if role == "Admin":
-            # Admin-Karte → Flappy Bird starten
             self._log("Admin erkannt → Flappy Bird!")
             self.root.after(0, self._easter_egg)
-
         elif role == "Techniker":
-            # Techniker-Karte → Stats auf LCD anzeigen
             self._log("Techniker erkannt → Stats auf LCD.")
             threading.Thread(target=self._show_stats_on_lcd, daemon=True).start()
 
@@ -61,11 +64,11 @@ class AdminDashboard:
             ipcon.connect(config.HOST, config.PORT)
             lcd = BrickletLCD128x64(config.UIDS["LCD"], ipcon)
             lcd.clear_display()
-            lcd.write_line(0, 0, "=== STATS ===   ")
-            lcd.write_line(1, 0, f"Temp:  {data['temp']:.1f} C      ")
-            lcd.write_line(2, 0, f"Licht: {data['lux']:.1f} lx     ")
-            lcd.write_line(3, 0, f"Feuch: {data['hum']:.1f} %      ")
-            lcd.write_line(5, 0, time.strftime("Zeit: %H:%M:%S  "))
+            lcd.write_line(0, 0, "=== STATS === ")
+            lcd.write_line(1, 0, f"Temp: {data['temp']:.1f} C ")
+            lcd.write_line(2, 0, f"Licht: {data['lux']:.1f} lx ")
+            lcd.write_line(3, 0, f"Feuch: {data['hum']:.1f} % ")
+            lcd.write_line(5, 0, time.strftime("Zeit: %H:%M:%S "))
             ipcon.disconnect()
         except Exception as e:
             self._log(f"LCD Stats Fehler: {e}")
@@ -74,7 +77,7 @@ class AdminDashboard:
         bg, fg, accent, s_bg = "#1e1e2e", "#cdd6f4", "#89b4fa", "#313244"
 
         # Titel
-        tk.Label(self.root, text="🖥  Serverraum-Überwachung",
+        tk.Label(self.root, text="🖥 Serverraum-Überwachung",
                  bg=bg, fg=accent, font=("Consolas", 16, "bold")).pack(pady=10)
 
         # --- Sensor-Frame ---
@@ -83,10 +86,10 @@ class AdminDashboard:
         tk.Label(sf, text="Live-Sensordaten", bg=s_bg, fg=accent,
                  font=("Consolas", 11, "bold")).grid(row=0, columnspan=2, pady=6)
 
-        self.var_temp = tk.StringVar(value="Temp:     -- °C")
-        self.var_lux  = tk.StringVar(value="Licht:    -- lx")
-        self.var_hum  = tk.StringVar(value="Feucht.:  -- %")
-        self.var_time = tk.StringVar(value="Zeit:     --:--:--")
+        self.var_temp = tk.StringVar(value="Temp: -- °C")
+        self.var_lux  = tk.StringVar(value="Licht: -- lx")
+        self.var_hum  = tk.StringVar(value="Feucht.: -- %")
+        self.var_time = tk.StringVar(value="Zeit: --:--:--")
 
         for i, v in enumerate([self.var_temp, self.var_lux, self.var_hum, self.var_time]):
             tk.Label(sf, textvariable=v, bg=s_bg, fg=fg,
@@ -110,11 +113,11 @@ class AdminDashboard:
 
         role_f = tk.Frame(nf, bg=s_bg)
         role_f.pack(fill="x", padx=10, pady=5)
-        tk.Button(role_f, text="Admin",     bg="#f9e2af", relief="flat",
+        tk.Button(role_f, text="Admin", bg="#f9e2af", relief="flat",
                   command=lambda: self._set_role("Admin")).pack(side="left", expand=True, padx=2)
         tk.Button(role_f, text="Techniker", bg="#89b4fa", relief="flat",
                   command=lambda: self._set_role("Techniker")).pack(side="left", expand=True, padx=2)
-        tk.Button(role_f, text="Sperren",   bg="#6c7086", fg="white", relief="flat",
+        tk.Button(role_f, text="Sperren", bg="#6c7086", fg="white", relief="flat",
                   command=lambda: self._set_role("Keine")).pack(side="left", expand=True, padx=2)
 
         mgmt_f = tk.Frame(nf, bg=s_bg)
@@ -132,11 +135,11 @@ class AdminDashboard:
                  font=("Consolas", 11, "bold")).pack(anchor="w")
 
         buttons = [
-            ("🕐  Segment: Zeit/Datum",  "#cba6f7", self._toggle_segment),
-            ("🔔  Test-Alarm (Beep)",     "#f38ba8", self._test_alarm),
-            ("🎵  Imperial March",        "#fab387", self._play_march),
-            ("🔒  Auth-Check (NFC)",      "#f9e2af", self._nfc_reset),
-            ("🐦  Easter Egg (Flappy)",   "#a6e3a1", self._easter_egg),
+            ("🕐 Segment: Zeit/Datum", "#cba6f7", self._toggle_segment),
+            ("🔔 Test-Alarm (Beep)",   "#f38ba8", self._test_alarm),
+            ("🎵 Imperial March",      "#fab387", self._play_march),
+            ("🔒 Auth-Check (NFC)",    "#f9e2af", self._nfc_reset),
+            ("🐦 Easter Egg (Flappy)", "#a6e3a1", self._easter_egg),
         ]
         for txt, color, cmd in buttons:
             tk.Button(af, text=txt, bg=color, fg="#1e1e2e",
@@ -161,6 +164,7 @@ class AdminDashboard:
 
     def _scan_new_card(self):
         self._log("NFC: Bitte Karte vorhalten...")
+
         def _worker():
             cid = self.security.get_raw_id(timeout=10)
             if cid:
@@ -172,6 +176,7 @@ class AdminDashboard:
                     self._log("Karte bereits in der Liste.")
             else:
                 self._log("NFC: Kein Tag gefunden / Timeout.")
+
         threading.Thread(target=_worker, daemon=True).start()
 
     def _refresh_list(self):
@@ -205,20 +210,21 @@ class AdminDashboard:
     def _refresh_sensors(self):
         try:
             data = sensors.get_all_metrics()
-            self.var_temp.set(f"Temp:     {data['temp']:.1f} °C")
-            self.var_lux.set( f"Licht:    {data['lux']:.1f} lx")
-            self.var_hum.set( f"Feucht.:  {data['hum']:.1f} %")
-            self.var_time.set(f"Zeit:     {time.strftime('%H:%M:%S')}")
+            self.var_temp.set(f"Temp: {data['temp']:.1f} °C")
+            self.var_lux.set( f"Licht: {data['lux']:.1f} lx")
+            self.var_hum.set( f"Feucht.: {data['hum']:.1f} %")
+            self.var_time.set(f"Zeit: {time.strftime('%H:%M:%S')}")
+
             if data["temp"] >= config.TEMP_CRIT:
                 self.lbl_status.config(text="● KRITISCH", fg="#f38ba8")
                 self._log(f"ALARM: Temperatur kritisch! {data['temp']:.1f}°C")
                 threading.Thread(target=alarm_system.play_imperial_march, daemon=True).start()
             elif data["temp"] >= config.TEMP_WARN:
-                self.lbl_status.config(text="● WARNUNG",  fg="#f9e2af")
+                self.lbl_status.config(text="● WARNUNG", fg="#f9e2af")
                 self._log(f"WARNUNG: Temperatur {data['temp']:.1f}°C")
                 threading.Thread(target=alarm_system.play_alarm, daemon=True).start()
             else:
-                self.lbl_status.config(text="● OK",       fg="#a6e3a1")
+                self.lbl_status.config(text="● OK", fg="#a6e3a1")
         except Exception as e:
             self._log(f"Sensor-Fehler: {e}")
 
@@ -249,11 +255,13 @@ class AdminDashboard:
             else:
                 self._log("ZUGRIFF VERWEIGERT.")
                 self.root.after(0, lambda: messagebox.showerror("NFC Auth", "Ungültige Karte!"))
+
         threading.Thread(target=_worker, daemon=True).start()
 
     def _easter_egg(self):
         self._log("Flappy Bird gestartet (LCD).")
         self.game.start()
+
 
 if __name__ == "__main__":
     root = tk.Tk()
