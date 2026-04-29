@@ -14,7 +14,7 @@ import display_manager
 import alarm_system
 import nfc_auth
 import flappy_logic
-import rgb_button  # NEU: RGB-Button Listener
+import rgb_button  # RGB-Button Listener (Zeit/Datum-Umschaltung)
 
 
 class AdminDashboard:
@@ -37,8 +37,11 @@ class AdminDashboard:
         # Segment-Loop beim Start automatisch starten
         display_manager.start_segment_loop()
 
-        # NEU: RGB-Button Listener starten (schaltet Zeit/Datum auf Segment-Display)
+        # RGB-Button Listener starten (schaltet Zeit/Datum auf Segment-Display)
         rgb_button.start_rgb_listener()
+
+        # Gollum beim Programmstart auf E-Paper anzeigen (Thread, kein GUI-Block)
+        threading.Thread(target=display_manager.epaper_show_gollum, daemon=True).start()
 
         # NFC-Monitor starten: reagiert auf Karten automatisch
         self.security.set_card_callback(self._on_nfc_card)
@@ -135,11 +138,12 @@ class AdminDashboard:
                  font=("Consolas", 11, "bold")).pack(anchor="w")
 
         buttons = [
-            ("🕐 Segment: Zeit/Datum", "#cba6f7", self._toggle_segment),
-            ("🔔 Test-Alarm (Beep)",   "#f38ba8", self._test_alarm),
-            ("🎵 Imperial March",      "#fab387", self._play_march),
-            ("🔒 Auth-Check (NFC)",    "#f9e2af", self._nfc_reset),
-            ("🐦 Easter Egg (Flappy)", "#a6e3a1", self._easter_egg),
+            ("🕐 Segment: Zeit/Datum",  "#cba6f7", self._toggle_segment),
+            ("🔔 Test-Alarm (Beep)",    "#f38ba8", self._test_alarm),
+            ("🎵 Imperial March",       "#fab387", self._play_march),
+            ("🔒 Auth-Check (NFC)",     "#f9e2af", self._nfc_reset),
+            ("🐦 Easter Egg (Flappy)",  "#a6e3a1", self._easter_egg),
+            ("🧌 Gollum anzeigen",      "#cba6f7", self._show_gollum),  # NEU
         ]
         for txt, color, cmd in buttons:
             tk.Button(af, text=txt, bg=color, fg="#1e1e2e",
@@ -261,6 +265,11 @@ class AdminDashboard:
     def _easter_egg(self):
         self._log("Flappy Bird gestartet (LCD).")
         self.game.start()
+
+    def _show_gollum(self):
+        """Gollum manuell erneut auf E-Paper anzeigen."""
+        self._log("Gollum auf E-Paper wird angezeigt...")
+        threading.Thread(target=display_manager.epaper_show_gollum, daemon=True).start()
 
 
 if __name__ == "__main__":
